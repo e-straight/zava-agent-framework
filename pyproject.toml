@@ -1,0 +1,62 @@
+[project]
+name = "zava-clothing-concept-analyzer"
+description = "Zava Clothing Company concept pitch deck analysis workflow"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = [
+    # Agent Framework - use local installation
+    "agent-framework[viz]",
+    "agent-framework-azure",
+    "agent-framework-foundry",
+
+    # PowerPoint processing
+    "python-pptx>=0.6.23",
+
+    # Environment and configuration
+    "python-dotenv>=1.0.0",
+
+    # Azure authentication
+    "azure-identity>=1.15.0",
+
+    # Telemetry and observability
+    "opentelemetry-sdk>=1.37.0",
+
+    # FastAPI web framework for UI
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.2.1",
+]
+
+[tool.uv]
+package = false
+
+# Code formatting and linting configuration
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+fix = true
+include = ["*.py"]
+exclude = ["docs/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501", # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# Type checking configuration
+[tool.pyright]
+include = ["core", "services", "*.py"]
+exclude = ["**/.venv/**"]
+typeCheckingMode = "basic"
