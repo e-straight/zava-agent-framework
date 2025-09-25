@@ -46,7 +46,7 @@ body {
 .header h1 {
     font-size: 2.8rem;
     font-weight: 700;
-    background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 50%, #fd7e14 100%);
+    background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -146,7 +146,7 @@ body {
 }
 
 .upload-button {
-    background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);
+    background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%);
     color: white;
     border: none;
     padding: 15px 30px;
@@ -156,12 +156,12 @@ body {
     font-weight: 600;
     margin-top: 15px;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(111, 66, 193, 0.3);
+    box-shadow: 0 4px 15px rgba(26, 35, 126, 0.3);
 }
 
 .upload-button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(111, 66, 193, 0.4);
+    box-shadow: 0 8px 25px rgba(26, 35, 126, 0.4);
 }
 
 .start-button {
@@ -208,7 +208,7 @@ body {
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 50%, #fd7e14 100%);
+    background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%);
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     border-radius: 10px;
     position: relative;
@@ -616,7 +616,7 @@ body {
 }
 
 .copy-button, .download-link {
-    background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);
+    background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%);
     color: white;
     border: none;
     padding: 12px 25px;
@@ -633,7 +633,7 @@ body {
 
 .copy-button:hover, .download-link:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(111, 66, 193, 0.3);
+    box-shadow: 0 6px 20px rgba(26, 35, 126, 0.3);
 }
 
 .copy-button.copied {
