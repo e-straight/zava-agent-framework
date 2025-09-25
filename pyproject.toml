@@ -8,19 +8,14 @@ dependencies = [
     "agent-framework[viz]",
     "agent-framework-azure",
     "agent-framework-foundry",
-
     # PowerPoint processing
     "python-pptx>=0.6.23",
-
     # Environment and configuration
     "python-dotenv>=1.0.0",
-
     # Azure authentication
     "azure-identity>=1.15.0",
-
     # Telemetry and observability
     "opentelemetry-sdk>=1.37.0",
-
     # FastAPI web framework for UI
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -30,6 +25,14 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+# Local package sources for agent-framework
+[tool.uv.sources]
+"agent-framework" = { path = "./packages/main", editable = true }
+"agent-framework-azure" = { path = "./packages/azure", editable = true }
+"agent-framework-foundry" = { path = "./packages/foundry", editable = true }
+"agent-framework-workflow" = { path = "./packages/workflow", editable = true }
+"agent-framework-mem0" = { path = "./packages/mem0", editable = true }
 
 # Code formatting and linting configuration
 [tool.ruff]

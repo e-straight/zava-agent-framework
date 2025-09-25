@@ -1,0 +1,40 @@
+flowchart TD
+  clothing_concept_parser["clothing_concept_parser (Start)"];
+  concept_input_adapter["concept_input_adapter"];
+  concurrent_fashion_analysis["concurrent_fashion_analysis"];
+  concurrent_fashion_analysis_logger["concurrent_fashion_analysis_logger"];
+  concept_report_writer_agent["concept_report_writer_agent"];
+  convert_report_to_approval_request["convert_report_to_approval_request"];
+  zava_approval_manager["zava_approval_manager"];
+  zava_human_approver["zava_human_approver"];
+  save_approved_concept_report["save_approved_concept_report"];
+  draft_concept_rejection_email["draft_concept_rejection_email"];
+  approved_concept_handler["approved_concept_handler"];
+  rejected_concept_handler["rejected_concept_handler"];
+  clothing_concept_parser --> concept_input_adapter;
+  concept_input_adapter --> concurrent_fashion_analysis;
+  concurrent_fashion_analysis --> concurrent_fashion_analysis_logger;
+  concurrent_fashion_analysis_logger --> concept_report_writer_agent;
+  concept_report_writer_agent --> convert_report_to_approval_request;
+  convert_report_to_approval_request --> zava_approval_manager;
+  zava_approval_manager --> zava_human_approver;
+  zava_human_approver --> zava_approval_manager;
+  zava_approval_manager -. conditional .-> save_approved_concept_report;
+  zava_approval_manager -. conditional .-> draft_concept_rejection_email;
+  save_approved_concept_report --> approved_concept_handler;
+  draft_concept_rejection_email --> rejected_concept_handler;
+  subgraph concurrent_fashion_analysis
+    concurrent_fashion_analysis__dispatcher["dispatcher (Start)"];
+    concurrent_fashion_analysis__fashion_market_research_agent["fashion_market_research_agent"];
+    concurrent_fashion_analysis__fashion_design_evaluation_agent["fashion_design_evaluation_agent"];
+    concurrent_fashion_analysis__production_feasibility_agent["production_feasibility_agent"];
+    concurrent_fashion_analysis__aggregator["aggregator"];
+    fan_in__concurrent_fashion_analysis__aggregator__b1158146((fan-in))
+    concurrent_fashion_analysis__fashion_design_evaluation_agent --> fan_in__concurrent_fashion_analysis__aggregator__b1158146;
+    concurrent_fashion_analysis__fashion_market_research_agent --> fan_in__concurrent_fashion_analysis__aggregator__b1158146;
+    concurrent_fashion_analysis__production_feasibility_agent --> fan_in__concurrent_fashion_analysis__aggregator__b1158146;
+    fan_in__concurrent_fashion_analysis__aggregator__b1158146 --> concurrent_fashion_analysis__aggregator;
+    concurrent_fashion_analysis__dispatcher --> concurrent_fashion_analysis__fashion_market_research_agent;
+    concurrent_fashion_analysis__dispatcher --> concurrent_fashion_analysis__fashion_design_evaluation_agent;
+    concurrent_fashion_analysis__dispatcher --> concurrent_fashion_analysis__production_feasibility_agent;
+  end

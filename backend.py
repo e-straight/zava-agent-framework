@@ -77,7 +77,7 @@ class ZavaWebSocketManager:
         await websocket.accept()
         self.active_connections.append(websocket)
         self.connection_count += 1
-        print(f"📱 WebSocket connected (Total: {self.connection_count})")
+        print(f"WebSocket connected (Total: {self.connection_count})")
 
     def disconnect(self, websocket: WebSocket) -> None:
         """
@@ -88,7 +88,7 @@ class ZavaWebSocketManager:
         """
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-            print(f"📱 WebSocket disconnected (Remaining: {len(self.active_connections)})")
+            print(f"WebSocket disconnected (Remaining: {len(self.active_connections)})")
 
     async def broadcast_message(self, message: dict) -> None:
         """
@@ -581,7 +581,7 @@ async def execute_concept_analysis_async(concept_file_path: str):
 
     except Exception as e:
         error_msg = f"Concept analysis failed: {str(e)}"
-        print(f"🚨 Workflow execution error: {error_msg}")
+        print(f"Workflow execution error: {error_msg}")
         print(traceback.format_exc())
 
         current_analysis_status.status = "error"
@@ -598,9 +598,9 @@ async def execute_concept_analysis_async(concept_file_path: str):
 if __name__ == "__main__":
     import uvicorn
 
-    print("🎨 Starting Zava Clothing Concept Analysis Server...")
-    print("🌐 Navigate to http://localhost:8000 to access the Zava concept analyzer")
-    print("📱 WebSocket endpoint available at ws://localhost:8000/ws")
+    print("Starting Zava Clothing Concept Analysis Server...")
+    print("Navigate to http://localhost:8000 to access the Zava concept analyzer")
+    print("WebSocket endpoint available at ws://localhost:8000/ws")
 
     uvicorn.run(
         app,

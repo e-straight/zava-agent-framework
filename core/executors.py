@@ -13,8 +13,11 @@ from typing import Any
 from agent_framework import (
     WorkflowContext,
     executor,
-    AgentExecutorResponse
+    AgentExecutorResponse,
+    Message,
+    WorkflowCompletedEvent
 )
+from core.approval import ClothingConceptApprovalRequest
 
 from services.pitch_parser import extract_clothing_concept_data
 from services.report_generator import ZavaFashionReportGenerator
@@ -66,19 +69,34 @@ async def process_clothing_concept_pitch(file_path: str, ctx: WorkflowContext[st
 
 
 @executor(id="concurrent_fashion_analysis_logger")
-async def log_fashion_analysis_outputs(responses: list[AgentExecutorResponse], ctx: WorkflowContext[str]) -> None:
+async def log_fashion_analysis_outputs(concurrent_message: Any, ctx: WorkflowContext[str]) -> None:
     """
     Process and log outputs from concurrent fashion analysis agents.
 
-    This executor receives results from multiple fashion analysis agents
-    (market research, design evaluation, production assessment) and
-    consolidates them for report generation.
+    This executor receives results from the concurrent fashion analysis workflow
+    and consolidates them for report generation.
 
     Args:
-        responses: List of responses from concurrent fashion analysis agents
+        concurrent_message: Message from concurrent fashion analysis workflow
         ctx: Workflow context for sending consolidated results
     """
-    print("STEP 4: Processing fashion analysis results...")
+    print("=" * 80)
+    print("STEP 4: LOG_FASHION_ANALYSIS_OUTPUTS - STARTING")
+    print("=" * 80)
+    print(f"ROUTING: Received message type: {type(concurrent_message)}")
+    print(f"ROUTING: Message attributes: {dir(concurrent_message)}")
+
+    if hasattr(concurrent_message, 'data'):
+        print(f"ROUTING: Message.data type: {type(concurrent_message.data)}")
+        print(f"ROUTING: Message.data length: {len(concurrent_message.data) if concurrent_message.data else 0}")
+
+    if hasattr(concurrent_message, 'source_id'):
+        print(f"ROUTING: Message.source_id: {concurrent_message.source_id}")
+
+    if hasattr(concurrent_message, 'target_id'):
+        print(f"ROUTING: Message.target_id: {concurrent_message.target_id}")
+
+    print("=" * 80)
 
     try:
         consolidated_analysis = {
@@ -87,14 +105,79 @@ async def log_fashion_analysis_outputs(responses: list[AgentExecutorResponse], c
             "components": {}
         }
 
+        # Extract responses from the concurrent message
+        responses = []
+
+        # Handle different input types from the concurrent workflow
+        if isinstance(concurrent_message, list):
+            print("ROUTING: Received raw list from concurrent workflow - processing directly")
+            # Direct list of responses from ConcurrentBuilder
+            for i, item in enumerate(concurrent_message):
+                if hasattr(item, 'contents') and item.contents:
+                    # ChatMessage format
+                    text_content = ""
+                    for content in item.contents:
+                        if hasattr(content, 'text'):
+                            text_content += content.text + " "
+
+                    agent_name = getattr(item, 'author_name', f"agent_{i + 1}")
+                    mock_response = type('AgentExecutorResponse', (), {
+                        'output': text_content.strip(),
+                        'agent_run_response': text_content.strip(),
+                        'executor_id': agent_name
+                    })()
+                    responses.append(mock_response)
+                    print(f"EXTRACTED: {agent_name}: {len(text_content.strip())} characters")
+                else:
+                    # Handle other response formats
+                    responses.append(item)
+                    print(f"EXTRACTED: Response {i+1}: {len(str(item))} characters")
+
+        elif hasattr(concurrent_message, 'data') and concurrent_message.data:
+            print("ROUTING: Received Message object - extracting data")
+            # Message wrapper around the responses
+            chat_messages = concurrent_message.data
+            for i, chat_msg in enumerate(chat_messages):
+                if hasattr(chat_msg, 'contents') and chat_msg.contents:
+                    # Extract text content from ChatMessage
+                    text_content = ""
+                    for content in chat_msg.contents:
+                        if hasattr(content, 'text'):
+                            text_content += content.text + " "
+
+                    # Get the agent name
+                    agent_name = getattr(chat_msg, 'author_name', f"agent_{i + 1}")
+
+                    # Create a mock AgentExecutorResponse for compatibility
+                    mock_response = type('AgentExecutorResponse', (), {
+                        'output': text_content.strip(),
+                        'agent_run_response': text_content.strip(),
+                        'executor_id': agent_name
+                    })()
+                    responses.append(mock_response)
+
+                    print(f"EXTRACTED: {agent_name}: {len(text_content.strip())} characters")
+        else:
+            print("WARNING: Unknown concurrent message format")
+            # Fallback to treating the message as a single response
+            responses = [concurrent_message]
+
         # Process each analysis component
         for i, response in enumerate(responses):
             component_name = f"fashion_analysis_component_{i + 1}"
 
+            # Extract content from response - try multiple attributes
+            analysis_content = ""
             if hasattr(response, 'output') and response.output:
-                # Extract key insights from each analysis component
                 analysis_content = str(response.output).strip()
+            elif hasattr(response, 'agent_run_response') and response.agent_run_response:
+                analysis_content = str(response.agent_run_response).strip()
+            elif hasattr(response, 'executor_id'):
+                analysis_content = f"Analysis completed by {response.executor_id}"
+            else:
+                analysis_content = str(response).strip()
 
+            if analysis_content:
                 # Categorize the analysis based on content keywords
                 if any(keyword in analysis_content.lower() for keyword in
                       ["market", "trend", "consumer", "demand", "demographic"]):
@@ -112,10 +195,12 @@ async def log_fashion_analysis_outputs(responses: list[AgentExecutorResponse], c
                 consolidated_analysis["components"][component_name] = {
                     "content": analysis_content,
                     "length": len(analysis_content),
-                    "agent_id": getattr(response, 'agent_id', f"agent_{i + 1}")
+                    "agent_id": getattr(response, 'executor_id', f"agent_{i + 1}")
                 }
 
                 print(f"PROCESSED: {component_name}: {len(analysis_content)} characters")
+            else:
+                print(f"WARNING: No content found in response {i + 1}")
 
         # Log summary of analysis components
         total_components = len(consolidated_analysis["components"])
@@ -124,8 +209,19 @@ async def log_fashion_analysis_outputs(responses: list[AgentExecutorResponse], c
         for component_name, component_data in consolidated_analysis["components"].items():
             print(f"  - {component_name}: {component_data['length']} chars")
 
+        consolidated_json = json.dumps(consolidated_analysis, indent=2)
+
+        print("=" * 80)
+        print("ROUTING: LOG_FASHION_ANALYSIS_OUTPUTS -> CONCEPT_REPORT_WRITER_AGENT")
+        print("=" * 80)
+        print(f"ROUTING: Sending consolidated_json type: {type(consolidated_json)}")
+        print(f"ROUTING: Consolidated JSON length: {len(consolidated_json)} characters")
+        print(f"ROUTING: Target: concept_report_writer_agent")
+
         # Send consolidated analysis to the report generation stage
-        await ctx.send_message(json.dumps(consolidated_analysis, indent=2))
+        await ctx.send_message(consolidated_json)
+        print("ROUTING: Message sent successfully to concept report writer")
+        print("=" * 80)
 
     except Exception as e:
         error_msg = f"Failed to process fashion analysis outputs: {str(e)}"
@@ -153,7 +249,11 @@ async def adapt_concept_for_analysis(concept_data_json: str, ctx: WorkflowContex
         concept_data_json: JSON string containing extracted concept data
         ctx: Workflow context for sending adapted data
     """
-    print("STEP 3: Adapting concept data for fashion analysis...")
+    print("=" * 80)
+    print("STEP 3: ADAPT_CONCEPT_FOR_ANALYSIS - STARTING")
+    print("=" * 80)
+    print(f"ROUTING: Received data type: {type(concept_data_json)}")
+    print(f"ROUTING: Data length: {len(str(concept_data_json))} characters")
 
     try:
         concept_data = json.loads(concept_data_json)
@@ -233,8 +333,17 @@ async def adapt_concept_for_analysis(concept_data_json: str, ctx: WorkflowContex
         print(f"  - {len(adapted_data['market_signals'])} market signals identified")
         print(f"  - {len(adapted_data['production_notes'])} production notes found")
 
+        print("=" * 80)
+        print("ROUTING: ADAPT_CONCEPT_FOR_ANALYSIS -> CONCURRENT_FASHION_ANALYSIS")
+        print("=" * 80)
+        print(f"ROUTING: Sending analysis_prompt type: {type(analysis_prompt)}")
+        print(f"ROUTING: Analysis prompt length: {len(analysis_prompt)} characters")
+        print(f"ROUTING: Target: concurrent_fashion_analysis (ConcurrentBuilder workflow)")
+
         # Send the analysis prompt to the concurrent analysis workflow
         await ctx.send_message(analysis_prompt)
+        print("ROUTING: Message sent successfully to concurrent analysis workflow")
+        print("=" * 80)
 
     except Exception as e:
         error_msg = f"Failed to adapt concept data: {str(e)}"
@@ -367,15 +476,86 @@ async def draft_concept_rejection_email(rejection_data: Any, ctx: WorkflowContex
         await ctx.send_message(f"ERROR: {error_msg}")
 
 
+@executor(id="convert_report_to_approval_request")
+async def convert_report_to_approval_request(report_response: AgentExecutorResponse, ctx: WorkflowContext[str]) -> None:
+    """
+    Extract report content and send to approval manager for processing.
+
+    This executor takes the comprehensive analysis report and extracts the
+    text content to send to the ZavaConceptApprovalManager for human review.
+
+    Args:
+        report_response: Response from the concept report writer agent
+        ctx: Workflow context for sending the report content
+    """
+    print("=" * 80)
+    print("STEP 5: CONVERT_REPORT_TO_APPROVAL_REQUEST - STARTING")
+    print("=" * 80)
+    print(f"ROUTING: Received report_response type: {type(report_response)}")
+    print(f"ROUTING: Report response attributes: {dir(report_response)}")
+
+    if hasattr(report_response, 'agent_run_response'):
+        print(f"ROUTING: agent_run_response type: {type(report_response.agent_run_response)}")
+
+    if hasattr(report_response, 'executor_id'):
+        print(f"ROUTING: executor_id: {report_response.executor_id}")
+
+    print("=" * 80)
+
+    try:
+        # Extract the report content from the agent response
+        if hasattr(report_response, 'agent_run_response') and report_response.agent_run_response:
+            if hasattr(report_response.agent_run_response, 'text'):
+                report_content = report_response.agent_run_response.text
+            else:
+                report_content = str(report_response.agent_run_response)
+        else:
+            report_content = str(report_response)
+
+        print("=" * 80)
+        print("ROUTING: CONVERT_REPORT_TO_APPROVAL_REQUEST -> ZAVA_CONCEPT_APPROVAL_MANAGER")
+        print("=" * 80)
+        print(f"ROUTING: Sending report_content type: {type(report_content)}")
+        print(f"ROUTING: Report content length: {len(report_content)} characters")
+        print(f"ROUTING: Target: zava_approval_manager (ZavaConceptApprovalManager)")
+
+        print("SUCCESS: Sending report content to approval manager")
+        await ctx.send_message(report_content)
+        print("ROUTING: Report content sent successfully to approval manager")
+        print("=" * 80)
+
+    except Exception as e:
+        print(f"ERROR: Failed to process report response: {e}")
+        # Send fallback report content
+        fallback_content = f"Report processing error: {str(e)}\nFallback content: {str(report_response)}"
+        await ctx.send_message(fallback_content)
+
+
 @executor(id="approved_concept_handler")
-async def handle_approved_concept(result: str, ctx: WorkflowContext[str]) -> None:
+async def handle_approved_concept(result: str, ctx: WorkflowContext[None]) -> None:
     """Handle the final processing of an approved clothing concept."""
+    print("=" * 80)
+    print("FINAL HANDLER: handle_approved_concept called")
+    print("=" * 80)
+    print(f"FINAL HANDLER: Received result type: {type(result)}")
+    print(f"FINAL HANDLER: Result value: {result}")
     print(f"SUCCESS: Clothing concept APPROVED for development: {result}")
-    await ctx.send_message("APPROVED")
+    print("FINAL HANDLER: Emitting WorkflowCompletedEvent('APPROVED')")
+    await ctx.add_event(WorkflowCompletedEvent("APPROVED"))
+    print("FINAL HANDLER: WorkflowCompletedEvent emitted successfully")
+    print("=" * 80)
 
 
 @executor(id="rejected_concept_handler")
-async def handle_rejected_concept(result: str, ctx: WorkflowContext[str]) -> None:
+async def handle_rejected_concept(result: str, ctx: WorkflowContext[None]) -> None:
     """Handle the final processing of a rejected clothing concept."""
+    print("=" * 80)
+    print("FINAL HANDLER: handle_rejected_concept called")
+    print("=" * 80)
+    print(f"FINAL HANDLER: Received result type: {type(result)}")
+    print(f"FINAL HANDLER: Result value: {result}")
     print(f"REJECTED: Clothing concept REJECTED: {result}")
-    await ctx.send_message("REJECTED")
+    print("FINAL HANDLER: Emitting WorkflowCompletedEvent('REJECTED')")
+    await ctx.add_event(WorkflowCompletedEvent("REJECTED"))
+    print("FINAL HANDLER: WorkflowCompletedEvent emitted successfully")
+    print("=" * 80)

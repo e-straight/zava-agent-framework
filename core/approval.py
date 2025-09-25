@@ -12,7 +12,9 @@ from agent_framework import (
     Executor,
     WorkflowContext,
     RequestInfoMessage,
-    RequestInfoExecutor
+    RequestInfoExecutor,
+    RequestResponse,
+    handler
 )
 
 
@@ -25,8 +27,9 @@ class ClothingConceptApprovalRequest(RequestInfoMessage):
     requests for Zava's clothing concept evaluation workflow.
     """
 
-    question: str
-    context: str
+    question: str = "Do you approve this clothing concept? (yes/no)"
+    context: str = ""
+    analysis_content: str = ""  # Store the analysis content in the request
 
     def __str__(self) -> str:
         """Return a formatted string representation of the approval request."""
@@ -49,6 +52,7 @@ Your decision will determine the next steps in our evaluation process.
         """.strip()
 
 
+@dataclass
 class ZavaApprovalDecision:
     """
     Data structure to represent approval decisions for clothing concepts.
@@ -57,16 +61,13 @@ class ZavaApprovalDecision:
     for tracking approval workflow results.
     """
 
-    def __init__(self, decision: str, feedback: str = "", timestamp: str = ""):
-        self.decision = decision.lower().strip()
-        self.feedback = feedback.strip()
-        self.timestamp = timestamp
-        self.is_approved = self.decision in ['yes', 'y', 'approve', 'approved']
-        self.is_rejected = self.decision in ['no', 'n', 'reject', 'rejected', 'deny', 'denied']
+    approved: bool
+    feedback: str = ""
+    analysis_content: str = ""  # Store the analysis content for saving
 
     def __str__(self) -> str:
         """Return a formatted string representation of the decision."""
-        status = "APPROVED" if self.is_approved else "REJECTED"
+        status = "APPROVED" if self.approved else "REJECTED"
         return f"Decision: {status}" + (f" - {self.feedback}" if self.feedback else "")
 
 
@@ -80,46 +81,25 @@ class ZavaConceptApprovalManager(Executor):
 
     def __init__(self, id: str = "zava_approval_manager"):
         super().__init__(id=id)
-        self.pending_requests = {}
-        self.approval_history = []
 
-    async def execute(self, input_data: Any, ctx: WorkflowContext[str]) -> Any:
-        """
-        Process approval workflow logic for clothing concept decisions.
+    @handler
+    async def start_approval(self, analysis_results: Any, ctx: WorkflowContext[ClothingConceptApprovalRequest]) -> None:
+        """Initiates approval request to human."""
+        print("=" * 80)
+        print("APPROVAL MANAGER: start_approval handler called")
+        print("=" * 80)
+        print(f"APPROVAL MANAGER: Received analysis_results type: {type(analysis_results)}")
+        print(f"APPROVAL MANAGER: Analysis results length: {len(str(analysis_results))} chars")
+        print("Starting Zava concept approval process...")
 
-        Args:
-            input_data: Analysis results requiring human approval
-            ctx: Workflow context for managing approval flow
-
-        Returns:
-            Routing decision based on human approval response
-        """
-        try:
-            # Check if we have a human response to process
-            if hasattr(input_data, 'response') and input_data.response:
-                return await self._process_approval_response(input_data.response, ctx)
-
-            # Otherwise, create a new approval request
-            return await self._create_approval_request(input_data, ctx)
-
-        except Exception as e:
-            print(f"Approval Manager Error: {str(e)}")
-            # Default to rejection on error
-            return ZavaApprovalDecision("no", f"Error in approval process: {str(e)}")
-
-    async def _create_approval_request(self, analysis_results: Any, ctx: WorkflowContext[str]) -> ClothingConceptApprovalRequest:
-        """
-        Create a structured approval request based on analysis results.
-
-        Args:
-            analysis_results: Comprehensive analysis from fashion agents
-            ctx: Workflow context
-
-        Returns:
-            Structured approval request for human review
-        """
         # Extract key information from analysis results
         analysis_text = str(analysis_results) if analysis_results else "No analysis provided"
+
+        print("=" * 60)
+        print("FASHION ANALYSIS RESULTS:")
+        print("=" * 60)
+        print(analysis_text[:1000] + ('...' if len(analysis_text) > 1000 else ''))
+        print("=" * 60)
 
         # Create comprehensive context for the approval decision
         approval_context = f"""
@@ -128,8 +108,6 @@ COMPREHENSIVE CLOTHING CONCEPT ANALYSIS SUMMARY
 The fashion analysis agents have completed their evaluation of this clothing concept
 submission. Below is the consolidated analysis covering market potential, design merit,
 and production feasibility:
-
-{analysis_text[:2000]}{'...' if len(analysis_text) > 2000 else ''}
 
 KEY DECISION FACTORS:
 • Market alignment with current fashion trends
@@ -142,67 +120,62 @@ This decision will determine whether Zava proceeds with concept development
 or provides constructive feedback for future submissions.
         """.strip()
 
-        # Create the approval request
-        approval_question = (
-            "Based on the comprehensive fashion analysis above, should Zava approve "
-            "this clothing concept for development?"
-        )
-
         approval_request = ClothingConceptApprovalRequest(
-            question=approval_question,
-            context=approval_context
+            question="Based on the comprehensive fashion analysis above, should Zava approve this clothing concept for development?",
+            context=approval_context,
+            analysis_content=analysis_text
         )
 
-        print("🤔 Created approval request for Zava design team review")
-        return approval_request
+        print("APPROVAL MANAGER: Sending approval request to Zava design team...")
+        print(f"APPROVAL MANAGER: Approval request type: {type(approval_request)}")
+        print(f"APPROVAL MANAGER: Request question: {approval_request.question[:50]}...")
+        await ctx.send_message(approval_request)
+        print("APPROVAL MANAGER: Approval request sent successfully to human approver")
+        print("=" * 80)
 
-    async def _process_approval_response(self, human_response: str, ctx: WorkflowContext[str]) -> ZavaApprovalDecision:
-        """
-        Process the human approval response and create a decision object.
+    @handler
+    async def route_decision(
+        self,
+        response: RequestResponse[ClothingConceptApprovalRequest, str],
+        ctx: WorkflowContext[ZavaApprovalDecision]
+    ) -> None:
+        """Processes human response and prepares routing decision."""
+        print("=" * 80)
+        print("APPROVAL MANAGER: route_decision handler called")
+        print("=" * 80)
+        print(f"APPROVAL MANAGER: Received response type: {type(response)}")
+        print(f"APPROVAL MANAGER: Response attributes: {dir(response)}")
+        print(f"APPROVAL MANAGER: Response data: {response.data}")
+        print(f"APPROVAL MANAGER: Response is_handled: {response.is_handled}")
 
-        Args:
-            human_response: The human decision (yes/no with optional feedback)
-            ctx: Workflow context
+        if hasattr(response, 'original_request'):
+            print(f"APPROVAL MANAGER: Original request type: {type(response.original_request)}")
+            print(f"APPROVAL MANAGER: Original request: {response.original_request}")
 
-        Returns:
-            Structured approval decision object
-        """
-        from datetime import datetime
+        print("Processing human approval response...")
+        human_input = (response.data or "").strip().lower()
+        print(f"APPROVAL MANAGER: Human input normalized: '{human_input}'")
 
-        # Parse the human response
-        response_parts = human_response.split('\n', 1)
-        decision = response_parts[0].strip()
-        feedback = response_parts[1].strip() if len(response_parts) > 1 else ""
+        # Parse human input into routing decision
+        approved = human_input in ["yes", "y", "approve", "approved"]
+        print(f"APPROVAL MANAGER: Approval status: {approved}")
 
-        # Create decision object
-        approval_decision = ZavaApprovalDecision(
-            decision=decision,
-            feedback=feedback,
-            timestamp=datetime.now().isoformat()
+        # Get analysis content from the original request
+        analysis_content = response.original_request.analysis_content if response.original_request else ""
+        print(f"APPROVAL MANAGER: Analysis content length: {len(analysis_content)} chars")
+
+        decision = ZavaApprovalDecision(
+            approved=approved,
+            feedback=response.data or "",
+            analysis_content=analysis_content
         )
+        print(f"APPROVAL MANAGER: Created decision: {decision}")
 
-        # Log the decision
-        if approval_decision.is_approved:
-            print(f"CONCEPT APPROVED by Zava design team")
-            if feedback:
-                print(f"   Feedback: {feedback}")
-        elif approval_decision.is_rejected:
-            print(f"CONCEPT REJECTED by Zava design team")
-            if feedback:
-                print(f"   Feedback: {feedback}")
-        else:
-            print(f"WARNING: UNCLEAR DECISION: {decision}")
-            # Default to rejection for unclear responses
-            approval_decision = ZavaApprovalDecision(
-                decision="no",
-                feedback=f"Unclear response '{decision}' interpreted as rejection",
-                timestamp=approval_decision.timestamp
-            )
-
-        # Store in approval history
-        self.approval_history.append(approval_decision)
-
-        return approval_decision
+        print(f"Zava team decision - {'APPROVED' if approved else 'REJECTED'}")
+        print("APPROVAL MANAGER: Sending decision to trigger conditional routing...")
+        await ctx.send_message(decision)
+        print("APPROVAL MANAGER: Decision sent successfully")
+        print("=" * 80)
 
 
 def concept_approval_condition(decision: Any) -> bool:
@@ -210,26 +183,64 @@ def concept_approval_condition(decision: Any) -> bool:
     Condition function to check if a clothing concept was approved.
 
     Args:
-        decision: ZavaApprovalDecision or similar decision object
+        decision: Human approval response (RequestResponse or str)
 
     Returns:
         True if the concept was approved, False otherwise
     """
-    if isinstance(decision, ZavaApprovalDecision):
-        return decision.is_approved
+    print("=" * 60)
+    print("CONDITION: concept_approval_condition called")
+    print(f"CONDITION: Decision type: {type(decision)}")
+    print(f"CONDITION: Decision value: {decision}")
+
+    # Handle RequestResponse from human approver
+    if hasattr(decision, 'data'):
+        print(f"CONDITION: Has data attribute, data type: {type(decision.data)}")
+        print(f"CONDITION: Data value: {decision.data}")
+
+        # Handle nested RequestResponse
+        if hasattr(decision.data, 'data'):
+            print("CONDITION: Detected nested RequestResponse - extracting inner data")
+            response_text = str(decision.data.data).lower().strip()
+        else:
+            response_text = str(decision.data).lower().strip()
+
+        result = response_text in ['yes', 'y', 'approve', 'approved']
+        print(f"CONDITION: Approval check result: {result} (response_text: '{response_text}')")
+        print("=" * 60)
+        return result
 
     # Handle string responses directly
     if isinstance(decision, str):
-        return decision.lower().strip() in ['yes', 'y', 'approve', 'approved']
+        result = decision.lower().strip() in ['yes', 'y', 'approve', 'approved']
+        print(f"CONDITION: String approval check result: {result} (decision: '{decision}')")
+        print("=" * 60)
+        return result
+
+    # Handle ZavaApprovalDecision objects
+    if isinstance(decision, ZavaApprovalDecision):
+        result = decision.approved
+        print(f"CONDITION: ZavaApprovalDecision approval result: {result}")
+        print(f"CONDITION: Decision details - approved: {decision.approved}, feedback: '{decision.feedback}'")
+        print("=" * 60)
+        return result
+
+    # Handle ClothingConceptApprovalRequest (should be ignored in conditions)
+    if isinstance(decision, ClothingConceptApprovalRequest):
+        print("CONDITION: Received ClothingConceptApprovalRequest - ignoring (not a response)")
+        print("=" * 60)
+        return False
 
     # Handle other types by checking for approval attributes
-    if hasattr(decision, 'is_approved'):
-        return decision.is_approved
-
-    if hasattr(decision, 'decision'):
-        return str(decision.decision).lower().strip() in ['yes', 'y', 'approve', 'approved']
+    if hasattr(decision, 'approved'):
+        result = decision.approved
+        print(f"CONDITION: Approved attribute result: {result}")
+        print("=" * 60)
+        return result
 
     # Default to False for unknown types
+    print("CONDITION: Unknown type - defaulting to False")
+    print("=" * 60)
     return False
 
 
@@ -238,26 +249,64 @@ def concept_rejection_condition(decision: Any) -> bool:
     Condition function to check if a clothing concept was rejected.
 
     Args:
-        decision: ZavaApprovalDecision or similar decision object
+        decision: Human approval response (RequestResponse or str)
 
     Returns:
         True if the concept was rejected, False otherwise
     """
-    if isinstance(decision, ZavaApprovalDecision):
-        return decision.is_rejected
+    print("=" * 60)
+    print("CONDITION: concept_rejection_condition called")
+    print(f"CONDITION: Decision type: {type(decision)}")
+    print(f"CONDITION: Decision value: {decision}")
+
+    # Handle RequestResponse from human approver
+    if hasattr(decision, 'data'):
+        print(f"CONDITION: Has data attribute, data type: {type(decision.data)}")
+        print(f"CONDITION: Data value: {decision.data}")
+
+        # Handle nested RequestResponse
+        if hasattr(decision.data, 'data'):
+            print("CONDITION: Detected nested RequestResponse - extracting inner data")
+            response_text = str(decision.data.data).lower().strip()
+        else:
+            response_text = str(decision.data).lower().strip()
+
+        result = response_text in ['no', 'n', 'reject', 'rejected', 'deny', 'denied']
+        print(f"CONDITION: Rejection check result: {result} (response_text: '{response_text}')")
+        print("=" * 60)
+        return result
 
     # Handle string responses directly
     if isinstance(decision, str):
-        return decision.lower().strip() in ['no', 'n', 'reject', 'rejected', 'deny', 'denied']
+        result = decision.lower().strip() in ['no', 'n', 'reject', 'rejected', 'deny', 'denied']
+        print(f"CONDITION: String rejection check result: {result} (decision: '{decision}')")
+        print("=" * 60)
+        return result
 
-    # Handle other types by checking for rejection attributes
-    if hasattr(decision, 'is_rejected'):
-        return decision.is_rejected
+    # Handle ZavaApprovalDecision objects
+    if isinstance(decision, ZavaApprovalDecision):
+        result = not decision.approved
+        print(f"CONDITION: ZavaApprovalDecision rejection result: {result}")
+        print(f"CONDITION: Decision details - approved: {decision.approved}, feedback: '{decision.feedback}'")
+        print("=" * 60)
+        return result
 
-    if hasattr(decision, 'decision'):
-        return str(decision.decision).lower().strip() in ['no', 'n', 'reject', 'rejected', 'deny', 'denied']
+    # Handle ClothingConceptApprovalRequest (should be ignored in conditions)
+    if isinstance(decision, ClothingConceptApprovalRequest):
+        print("CONDITION: Received ClothingConceptApprovalRequest - ignoring (not a response)")
+        print("=" * 60)
+        return False
+
+    # Handle other types by checking for approval attributes
+    if hasattr(decision, 'approved'):
+        result = not decision.approved
+        print(f"CONDITION: Approved attribute rejection result: {result}")
+        print("=" * 60)
+        return result
 
     # Default to True (reject) for unknown types as a safety measure
+    print("CONDITION: Unknown type - defaulting to True (reject)")
+    print("=" * 60)
     return True
 
 
@@ -274,6 +323,3 @@ def create_zava_human_approver() -> RequestInfoExecutor:
 # Convenience aliases for backward compatibility and clarity
 yes_condition = concept_approval_condition
 no_condition = concept_rejection_condition
-ApprovalRequest = ClothingConceptApprovalRequest
-RoutingDecision = ZavaApprovalDecision
-ApprovalManager = ZavaConceptApprovalManager

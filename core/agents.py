@@ -6,12 +6,16 @@ tasks including market research, design evaluation, and production assessment.
 """
 
 from typing import List, Any
+import asyncio
 from agent_framework import (
     ChatMessage,
     Role,
     WorkflowExecutor,
     ConcurrentBuilder,
-    AgentExecutor
+    AgentExecutor,
+    AgentExecutorResponse,
+    WorkflowContext,
+    executor
 )
 
 
@@ -30,42 +34,35 @@ def create_fashion_research_agent(chat_clients_list: List[Any]) -> AgentExecutor
         AgentExecutor configured for fashion market research
     """
     # Define the fashion research agent's expertise and role
-    system_prompt = """You are a Senior Fashion Market Research Analyst at Zava, a trendy clothing company.
+    system_prompt = """You are a Senior Fashion Market Research Analyst at Zava.
 
-    Your expertise includes:
-    - Fashion trend analysis and forecasting
-    - Consumer behavior in apparel markets
-    - Competitive landscape assessment
-    - Target demographic analysis
-    - Seasonal planning and market timing
-    - Price positioning and value analysis
+    STRICT REQUIREMENTS:
+    - Maximum 100 words total
+    - Use bullet points
+    - Be direct and specific
+    - No fluff or filler text
 
-    When analyzing clothing concept pitches, focus on:
+    Provide:
+    • **Trend Fit**: 1-2 sentences max
+    • **Target Market**: 1 sentence
+    • **Competition**: 1 sentence
+    • **Demand**: 1 sentence
+    • **Price**: 1 sentence
 
-    1. **Market Trends**: How well does this concept align with current and emerging fashion trends?
-    2. **Target Audience**: Is there clear definition and appeal to specific customer segments?
-    3. **Competitive Position**: How does this differentiate from existing market offerings?
-    4. **Demand Indicators**: What signals suggest market demand for this type of clothing?
-    5. **Market Timing**: Is this concept properly positioned for upcoming seasons?
-    6. **Price Potential**: What price points could this concept support in the market?
+    STOP writing after 100 words."""
 
-    Always provide:
-    - Specific trend references and market data when available
-    - Clear assessment of market opportunity size
-    - Identification of potential risks and challenges
-    - Recommendations for market positioning and timing
+    # Create the market research agent using chat client
+    if not chat_clients_list or len(chat_clients_list) == 0:
+        raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    Keep your analysis focused on actionable insights that will help Zava make informed
-    decisions about pursuing clothing concept development."""
-
-    # Create the market research agent
-    research_agent = AgentExecutor.create(
-        model=chat_clients_list[0] if chat_clients_list else None,
+    chat_client = chat_clients_list[0]
+    research_agent = chat_client.create_agent(
         instructions=system_prompt,
-        id="fashion_market_research_agent"
+        name="Fashion Market Research Agent",
+        model_name="gpt-4o"  # or use a default model
     )
-
-    return research_agent
+    # Wrap in AgentExecutor for workflow compatibility
+    return AgentExecutor(research_agent, id="fashion_market_research_agent")
 
 
 def create_design_evaluation_agent(chat_clients_list: List[Any]) -> AgentExecutor:
@@ -82,42 +79,33 @@ def create_design_evaluation_agent(chat_clients_list: List[Any]) -> AgentExecuto
     Returns:
         AgentExecutor configured for design evaluation
     """
-    system_prompt = """You are a Senior Fashion Design Director at Zava, a contemporary clothing company.
+    system_prompt = """You are a Senior Fashion Design Director at Zava.
 
-    Your expertise includes:
-    - Fashion design principles and aesthetics
-    - Material selection and fabric properties
-    - Color theory and seasonal palettes
-    - Silhouette and fit analysis
-    - Brand identity and design consistency
-    - Technical design feasibility
+    STRICT REQUIREMENTS:
+    - Maximum 80 words total
+    - Use bullet points only
+    - No lengthy explanations
 
-    When evaluating clothing concept pitches, assess:
+    Provide:
+    • **Innovation**: 1 sentence max
+    • **Brand Fit**: 1 sentence max
+    • **Technical**: 1 sentence max
+    • **Materials**: 1 sentence max
+    • **Versatility**: 1 sentence max
 
-    1. **Design Innovation**: How creative and unique is this concept?
-    2. **Aesthetic Appeal**: Does this align with contemporary fashion sensibilities?
-    3. **Brand Fit**: How well does this concept match Zava's design DNA?
-    4. **Technical Feasibility**: Can this design be executed with quality construction?
-    5. **Material Considerations**: Are the proposed fabrics and materials appropriate?
-    6. **Versatility**: Does this concept offer styling flexibility for customers?
+    STOP writing after 80 words."""
 
-    Provide detailed feedback on:
-    - Design strengths and areas for improvement
-    - Technical considerations for pattern-making and construction
-    - Suggestions for material and color alternatives
-    - Assessment of how this fits within a collection context
-    - Recommendations for design refinements
+    # Create the design evaluation agent using chat client
+    if not chat_clients_list or len(chat_clients_list) == 0:
+        raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    Your analysis should help determine whether this concept has the design merit
-    and technical viability to succeed as a Zava product."""
-
-    design_agent = AgentExecutor.create(
-        model=chat_clients_list[1] if len(chat_clients_list) > 1 else chat_clients_list[0],
+    chat_client = chat_clients_list[1] if len(chat_clients_list) > 1 else chat_clients_list[0]
+    design_agent = chat_client.create_agent(
         instructions=system_prompt,
-        id="fashion_design_evaluation_agent"
+        name="Fashion Design Evaluation Agent",
+        model_name="gpt-4o"
     )
-
-    return design_agent
+    return AgentExecutor(design_agent, id="fashion_design_evaluation_agent")
 
 
 def create_production_feasibility_agent(chat_clients_list: List[Any]) -> AgentExecutor:
@@ -134,43 +122,33 @@ def create_production_feasibility_agent(chat_clients_list: List[Any]) -> AgentEx
     Returns:
         AgentExecutor configured for production assessment
     """
-    system_prompt = """You are a Production Director at Zava, a growing clothing company.
+    system_prompt = """You are a Production Director at Zava.
 
-    Your expertise includes:
-    - Garment manufacturing processes and requirements
-    - Cost analysis and pricing strategies
-    - Supply chain management and sourcing
-    - Quality control and production standards
-    - Scalability and volume production planning
-    - Sustainability and ethical manufacturing practices
+    STRICT REQUIREMENTS:
+    - Maximum 70 words total
+    - Use bullet points only
+    - Numbers and costs required
 
-    When analyzing clothing concept pitches, evaluate:
+    Provide:
+    • **Manufacturing**: Complexity level (1 sentence)
+    • **Cost**: Specific $ range per unit (1 sentence)
+    • **Sourcing**: Availability (1 sentence)
+    • **Quality**: Main concern (1 sentence)
+    • **Timeline**: Months needed (1 sentence)
 
-    1. **Manufacturing Complexity**: How difficult would this be to produce consistently?
-    2. **Cost Structure**: What are the likely production costs and pricing implications?
-    3. **Material Sourcing**: Are required materials readily available and cost-effective?
-    4. **Quality Standards**: Can this concept meet Zava's quality requirements?
-    5. **Production Volume**: Is this suitable for our typical production runs?
-    6. **Timeline Feasibility**: What would be realistic development and production timelines?
+    STOP writing after 70 words."""
 
-    Your analysis should cover:
-    - Detailed cost breakdown estimates (materials, labor, overhead)
-    - Identification of potential production challenges
-    - Supplier and sourcing considerations
-    - Quality control requirements and testing needs
-    - Recommendations for production optimization
-    - Assessment of scalability for different volume levels
+    # Create the production feasibility agent using chat client
+    if not chat_clients_list or len(chat_clients_list) == 0:
+        raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    Focus on providing practical insights that help determine production viability
-    and identify any red flags that could impact successful manufacturing."""
-
-    production_agent = AgentExecutor.create(
-        model=chat_clients_list[2] if len(chat_clients_list) > 2 else chat_clients_list[0],
+    chat_client = chat_clients_list[2] if len(chat_clients_list) > 2 else chat_clients_list[0]
+    production_agent = chat_client.create_agent(
         instructions=system_prompt,
-        id="production_feasibility_agent"
+        name="Production Feasibility Agent",
+        model_name="gpt-4o"
     )
-
-    return production_agent
+    return AgentExecutor(production_agent, id="production_feasibility_agent")
 
 
 def create_comprehensive_analysis_agent(chat_clients_list: List[Any]) -> AgentExecutor:
@@ -186,76 +164,70 @@ def create_comprehensive_analysis_agent(chat_clients_list: List[Any]) -> AgentEx
     Returns:
         AgentExecutor configured for comprehensive analysis
     """
-    system_prompt = """You are the Head of Product Development at Zava, a contemporary clothing company.
+    system_prompt = """You are the Head of Product Development at Zava.
 
-    You are responsible for making final recommendations on clothing concept submissions
-    based on comprehensive analysis across market, design, and production considerations.
+    STRICT REQUIREMENTS:
+    - Maximum 100 words total
+    - Start with decision word
+    - Use bullet format only
 
-    Your role includes:
-    - Synthesizing multiple analysis perspectives
-    - Identifying strategic alignment with Zava's goals
-    - Making go/no-go recommendations
-    - Providing clear rationale for decisions
-    - Suggesting development priorities and next steps
+    Provide:
+    • **DECISION**: APPROVE/REJECT/MODIFY (1 word + reason)
+    • **Strategy**: Brand fit (1 sentence)
+    • **Opportunity**: Revenue potential (1 sentence)
+    • **Risks**: Top 2 concerns (bullets)
+    • **Actions**: Top 2 next steps (bullets)
 
-    When reviewing clothing concept analysis, consider:
+    STOP writing after 100 words."""
 
-    1. **Strategic Fit**: How well does this align with Zava's brand positioning and goals?
-    2. **Market Opportunity**: What is the potential market impact and revenue opportunity?
-    3. **Risk Assessment**: What are the key risks and how can they be mitigated?
-    4. **Resource Requirements**: What investment of time, money, and resources is needed?
-    5. **Competitive Advantage**: How will this help differentiate Zava in the market?
-    6. **Portfolio Balance**: How does this fit with our existing and planned product lines?
+    # Create the comprehensive analysis agent using chat client
+    if not chat_clients_list or len(chat_clients_list) == 0:
+        raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    Provide structured recommendations that include:
-    - Clear recommendation (Approve/Reject/Request modifications)
-    - Key supporting rationale
-    - Identified opportunities and risks
-    - Suggested next steps if approved
-    - Alternative approaches if rejected
-
-    Your analysis should provide the executive summary needed for final decision-making."""
-
-    comprehensive_agent = AgentExecutor.create(
-        model=chat_clients_list[-1] if chat_clients_list else None,
+    chat_client = chat_clients_list[-1]  # Use the last client in the list
+    comprehensive_agent = chat_client.create_agent(
         instructions=system_prompt,
-        id="comprehensive_fashion_analysis_agent"
+        name="Comprehensive Fashion Analysis Agent",
+        model_name="gpt-4o"
     )
+    return AgentExecutor(comprehensive_agent, id="comprehensive_fashion_analysis_agent")
 
-    return comprehensive_agent
 
-
-def create_concurrent_fashion_analysis_workflow(chat_clients_list: List[Any]) -> WorkflowExecutor:
+async def create_concurrent_fashion_analysis_workflow(chat_clients_list: List[Any]):
     """
     Create a concurrent workflow that runs multiple fashion analysis agents in parallel.
 
-    This workflow orchestrates market research, design evaluation, and production
-    assessment agents to provide comprehensive analysis of clothing concepts.
+    Uses ConcurrentBuilder to create a proper concurrent subworkflow that aggregates
+    results from market research, design evaluation, and production assessment agents.
 
     Args:
         chat_clients_list: List of chat clients for agent communication
 
     Returns:
-        WorkflowExecutor configured for concurrent fashion analysis
+        Concurrent workflow built with ConcurrentBuilder
     """
-    # Create individual analysis agents
+    print("Creating concurrent fashion analysis workflow...")
+
+    # Create individual analysis agents with staggered initialization to avoid rate limits
     market_agent = create_fashion_research_agent(chat_clients_list)
+    await asyncio.sleep(0.5)
+
     design_agent = create_design_evaluation_agent(chat_clients_list)
+    await asyncio.sleep(0.5)
+
     production_agent = create_production_feasibility_agent(chat_clients_list)
 
-    # Build concurrent workflow with all three agents
-    concurrent_workflow = ConcurrentBuilder()\
-        .add_executor(market_agent)\
-        .add_executor(design_agent)\
-        .add_executor(production_agent)\
-        .build()
+    # Build concurrent workflow that returns aggregated analysis
+    workflow = ConcurrentBuilder().participants([market_agent, design_agent, production_agent]).build()
 
-    print("🔄 Created concurrent fashion analysis workflow with:")
+    print("Created concurrent fashion analysis workflow with participants:")
     print("   • Fashion Market Research Agent")
-    print("   • Design Evaluation Agent")
+    print("   • Fashion Design Evaluation Agent")
     print("   • Production Feasibility Agent")
 
-    return concurrent_workflow
+    return workflow
+
+
 
 
 def create_concept_report_writer_agent(chat_clients_list: List[Any]) -> AgentExecutor:
@@ -271,36 +243,31 @@ def create_concept_report_writer_agent(chat_clients_list: List[Any]) -> AgentExe
     Returns:
         AgentExecutor configured for report writing
     """
-    system_prompt = """You are a Senior Business Analyst at Zava specializing in clothing concept evaluation reports.
+    system_prompt = """You are a Senior Business Analyst at Zava.
 
-    Your responsibility is to synthesize complex fashion analysis into clear,
-    actionable reports for leadership decision-making.
+    STRICT REQUIREMENTS:
+    - Maximum 150 words total
+    - Start with APPROVE or REJECT
+    - Use bullet format
 
-    When writing clothing concept evaluation reports, include:
+    Provide:
+    • **DECISION**: APPROVE/REJECT + why (1 sentence)
+    • **Market**: Key trend (1 sentence)
+    • **Design**: Innovation level (1 sentence)
+    • **Production**: Cost estimate (1 sentence)
+    • **Risks**: Top 2 risks (bullet points)
+    • **Next Steps**: If approved, top 2 actions (bullet points)
 
-    1. **Executive Summary**: Clear recommendation and key findings
-    2. **Concept Overview**: Summary of the proposed clothing concept
-    3. **Market Analysis**: Fashion trends, consumer demand, competitive position
-    4. **Design Assessment**: Creative merit, brand fit, technical feasibility
-    5. **Production Evaluation**: Manufacturing requirements, costs, timeline
-    6. **Risk Analysis**: Potential challenges and mitigation strategies
-    7. **Financial Projections**: Cost structure and revenue potential
-    8. **Recommendations**: Clear next steps and decision points
+    STOP writing after 150 words."""
 
-    Your reports should be:
-    - Professional and well-structured
-    - Data-driven with specific examples
-    - Actionable with clear recommendations
-    - Comprehensive yet concise
-    - Suitable for executive presentation
+    # Create the report writer agent using chat client
+    if not chat_clients_list or len(chat_clients_list) == 0:
+        raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    Focus on providing the information leadership needs to make confident
-    decisions about clothing concept development investments."""
-
-    report_agent = AgentExecutor.create(
-        model=chat_clients_list[0] if chat_clients_list else None,
+    chat_client = chat_clients_list[0]
+    report_agent = chat_client.create_agent(
         instructions=system_prompt,
-        id="concept_report_writer_agent"
+        name="Concept Report Writer Agent",
+        model_name="gpt-4o"
     )
-
-    return report_agent
+    return AgentExecutor(report_agent, id="concept_report_writer_agent")
