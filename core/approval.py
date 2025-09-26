@@ -109,6 +109,8 @@ The fashion analysis agents have completed their evaluation of this clothing con
 submission. Below is the consolidated analysis covering market potential, design merit,
 and production feasibility:
 
+ {analysis_text}
+
 KEY DECISION FACTORS:
 • Market alignment with current fashion trends
 • Design innovation and brand fit with Zava

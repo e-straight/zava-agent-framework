@@ -445,7 +445,7 @@ class ZavaConceptWorkflowManager:
             from agent_framework.foundry import FoundryChatClient
             from azure.identity.aio import AzureCliCredential
 
-            await self._add_output("System", f"Initializing fresh Foundry clients with endpoint: {project_endpoint}", "info")
+            await self._add_output("System", f"Initializing fresh Foundry clients with Foundry endpoint:", "info")
 
             # Create Azure CLI credential for authentication
             credential = AzureCliCredential()
