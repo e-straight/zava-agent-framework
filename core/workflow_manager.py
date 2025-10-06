@@ -18,7 +18,9 @@ from agent_framework import (
     Executor,
     Role,
     WorkflowBuilder,
-    WorkflowCompletedEvent,
+    WorkflowOutputEvent,
+    WorkflowStatusEvent,
+    WorkflowRunState,
     WorkflowContext,
     WorkflowExecutor,
     RequestInfoEvent,
@@ -290,9 +292,10 @@ class ZavaConceptWorkflowManager:
 
             # Execute the workflow with human-in-the-loop approval
             pending_requests = None
-            workflow_completed = None
+            workflow_output = None
+            workflow_idle = False
 
-            while not workflow_completed:
+            while not workflow_idle:
                 # Run workflow iteration
                 if pending_requests:
                     stream = self.workflow.send_responses_streaming(pending_requests)
@@ -322,8 +325,8 @@ class ZavaConceptWorkflowManager:
                     # Track progress based on event information
                     await self._track_workflow_progress(event)
 
-                    if isinstance(event, WorkflowCompletedEvent):
-                        workflow_completed = event
+                    if isinstance(event, WorkflowOutputEvent):
+                        workflow_output = event.data
                         await self._update_progress("Save Results", 100, {
                             "current_step": "Save Results",
                             "completed_steps": [
@@ -337,6 +340,12 @@ class ZavaConceptWorkflowManager:
                             ]
                         })
                         await self._add_output("Workflow", f"Concept analysis completed: {event.data}", "success")
+
+                    if isinstance(event, WorkflowStatusEvent):
+                        if event.state in [WorkflowRunState.IDLE, WorkflowRunState.FAILED]:
+                            workflow_idle = True
+                            if event.state == WorkflowRunState.FAILED:
+                                await self._add_output("Workflow", "Workflow execution failed", "error")
 
                     elif isinstance(event, RequestInfoEvent):
                         # Human approval required
@@ -364,7 +373,7 @@ class ZavaConceptWorkflowManager:
                         print("=" * 60)
 
                 # Process human approval requests
-                if human_requests and not workflow_completed:
+                if human_requests and not workflow_idle:
                     print(f"WORKFLOW: Processing {len(human_requests)} human approval requests")
 
                     for i, (request_id, question, context) in enumerate(human_requests):
@@ -398,12 +407,12 @@ class ZavaConceptWorkflowManager:
                         print("=" * 80)
 
                         await self._add_output("Human", f"Decision: {approval_response}", "decision")
-                elif human_requests and workflow_completed:
-                    print("WORKFLOW: Human requests found but workflow already completed - this may be unexpected")
-                elif not human_requests and not workflow_completed:
+                elif human_requests and workflow_idle:
+                    print("WORKFLOW: Human requests found but workflow already idle - this may be unexpected")
+                elif not human_requests and not workflow_idle:
                     print("WORKFLOW: No human requests in this iteration, workflow continuing...")
 
-            return workflow_completed.data if workflow_completed else "UNKNOWN"
+            return workflow_output if workflow_output else "UNKNOWN"
 
         except Exception as e:
             error_msg = f"Clothing concept analysis failed: {str(e)}"
@@ -432,28 +441,52 @@ class ZavaConceptWorkflowManager:
 
     async def _initialize_chat_clients(self) -> None:
         """Initialize AI chat clients for the fashion analysis agents."""
-        # Check for required environment variable
-        project_endpoint = os.getenv("FOUNDRY_PROJECT_ENDPOINT") or os.getenv("PROJECT_ENDPOINT")
+        # Check for required environment variables
+        project_endpoint = (
+            os.getenv("AZURE_AI_PROJECT_ENDPOINT")
+            or os.getenv("FOUNDRY_PROJECT_ENDPOINT")
+            or os.getenv("PROJECT_ENDPOINT")
+        )
         if not project_endpoint:
             raise ValueError(
-                "FOUNDRY_PROJECT_ENDPOINT or PROJECT_ENDPOINT environment variable is required. "
+                "AZURE_AI_PROJECT_ENDPOINT, FOUNDRY_PROJECT_ENDPOINT, or PROJECT_ENDPOINT environment variable is required. "
                 "Please set it in your .env file. "
-                "Example: FOUNDRY_PROJECT_ENDPOINT=https://your-project.eastus2.inference.ml.azure.com"
+                "Example: AZURE_AI_PROJECT_ENDPOINT=https://your-project.eastus2.inference.ml.azure.com"
+            )
+
+        model_deployment_name = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+        if not model_deployment_name:
+            raise ValueError(
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required. "
+                "Please set it in your .env file. "
+                "Example: AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4o"
             )
 
         try:
-            from agent_framework.foundry import FoundryChatClient
+            from agent_framework_azure_ai import AzureAIAgentClient
             from azure.identity.aio import AzureCliCredential
 
-            await self._add_output("System", f"Initializing fresh Foundry clients with Foundry endpoint:", "info")
+            await self._add_output("System", f"Initializing Azure AI Agent clients with endpoint and model: {model_deployment_name}", "info")
 
             # Create Azure CLI credential for authentication
             credential = AzureCliCredential()
 
-            # Initialize multiple Foundry chat clients to avoid caching
-            client1 = FoundryChatClient(project_endpoint=project_endpoint, async_credential=credential)
-            client2 = FoundryChatClient(project_endpoint=project_endpoint, async_credential=credential)
-            client3 = FoundryChatClient(project_endpoint=project_endpoint, async_credential=credential)
+            # Initialize multiple Azure AI Agent clients to avoid caching
+            client1 = AzureAIAgentClient(
+                project_endpoint=project_endpoint,
+                model_deployment_name=model_deployment_name,
+                async_credential=credential
+            )
+            client2 = AzureAIAgentClient(
+                project_endpoint=project_endpoint,
+                model_deployment_name=model_deployment_name,
+                async_credential=credential
+            )
+            client3 = AzureAIAgentClient(
+                project_endpoint=project_endpoint,
+                model_deployment_name=model_deployment_name,
+                async_credential=credential
+            )
 
             # Use separate clients for each agent to ensure fresh instructions
             self.chat_clients = [client1, client2, client3]
@@ -462,11 +495,12 @@ class ZavaConceptWorkflowManager:
 
         except Exception as e:
             error_msg = (
-                f"Failed to initialize Foundry chat client: {str(e)}\n"
+                f"Failed to initialize Azure AI Agent client: {str(e)}\n"
                 f"Please ensure:\n"
-                f"1. FOUNDRY_PROJECT_ENDPOINT or PROJECT_ENDPOINT is correctly set in .env\n"
-                f"2. You are authenticated with Azure CLI (run: az login)\n"
-                f"3. Your Azure account has access to the AI project"
+                f"1. AZURE_AI_PROJECT_ENDPOINT is correctly set in .env\n"
+                f"2. AZURE_AI_MODEL_DEPLOYMENT_NAME is correctly set in .env\n"
+                f"3. You are authenticated with Azure CLI (run: az login)\n"
+                f"4. Your Azure account has access to the AI project"
             )
             await self._add_output("System", error_msg, "error")
             raise RuntimeError(error_msg)
@@ -556,7 +590,7 @@ class ZavaConceptWorkflowManager:
 
         try:
             # Import WorkflowViz
-            from agent_framework._workflow._viz import WorkflowViz
+            from agent_framework import WorkflowViz
 
             await self._add_output("System", "Generating workflow visualization...", "info")
             viz = WorkflowViz(self.workflow)
@@ -585,7 +619,7 @@ class ZavaConceptWorkflowManager:
                 await self._add_output("System", f"SVG visualization saved: {svg_filename}", "success")
 
             except ImportError:
-                await self._add_output("System", "Tip: Install 'viz' extra for SVG export: pip install agent-framework[viz]", "warning")
+                await self._add_output("System", "Tip: Install 'viz' extra for SVG export: pip install agent-framework-core[viz]", "warning")
             except Exception as e:
                 await self._add_output("System", f"SVG export failed: {str(e)}. You may need to install Graphviz: https://graphviz.org/download/", "warning")
 

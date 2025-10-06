@@ -14,8 +14,7 @@ from agent_framework import (
     WorkflowContext,
     executor,
     AgentExecutorResponse,
-    Message,
-    WorkflowCompletedEvent
+    Message
 )
 from core.approval import ClothingConceptApprovalRequest
 
@@ -540,9 +539,9 @@ async def handle_approved_concept(result: str, ctx: WorkflowContext[None]) -> No
     print(f"FINAL HANDLER: Received result type: {type(result)}")
     print(f"FINAL HANDLER: Result value: {result}")
     print(f"SUCCESS: Clothing concept APPROVED for development: {result}")
-    print("FINAL HANDLER: Emitting WorkflowCompletedEvent('APPROVED')")
-    await ctx.add_event(WorkflowCompletedEvent("APPROVED"))
-    print("FINAL HANDLER: WorkflowCompletedEvent emitted successfully")
+    print("FINAL HANDLER: Yielding output 'APPROVED'")
+    await ctx.yield_output("APPROVED")
+    print("FINAL HANDLER: Output 'APPROVED' yielded successfully")
     print("=" * 80)
 
 
@@ -555,7 +554,7 @@ async def handle_rejected_concept(result: str, ctx: WorkflowContext[None]) -> No
     print(f"FINAL HANDLER: Received result type: {type(result)}")
     print(f"FINAL HANDLER: Result value: {result}")
     print(f"REJECTED: Clothing concept REJECTED: {result}")
-    print("FINAL HANDLER: Emitting WorkflowCompletedEvent('REJECTED')")
-    await ctx.add_event(WorkflowCompletedEvent("REJECTED"))
-    print("FINAL HANDLER: WorkflowCompletedEvent emitted successfully")
+    print("FINAL HANDLER: Yielding output 'REJECTED'")
+    await ctx.yield_output("REJECTED")
+    print("FINAL HANDLER: Output 'REJECTED' yielded successfully")
     print("=" * 80)

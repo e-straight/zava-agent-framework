@@ -146,13 +146,11 @@ or provides constructive feedback for future submissions.
         print("APPROVAL MANAGER: route_decision handler called")
         print("=" * 80)
         print(f"APPROVAL MANAGER: Received response type: {type(response)}")
-        print(f"APPROVAL MANAGER: Response attributes: {dir(response)}")
         print(f"APPROVAL MANAGER: Response data: {response.data}")
-        print(f"APPROVAL MANAGER: Response is_handled: {response.is_handled}")
 
         if hasattr(response, 'original_request'):
             print(f"APPROVAL MANAGER: Original request type: {type(response.original_request)}")
-            print(f"APPROVAL MANAGER: Original request: {response.original_request}")
+            print(f"APPROVAL MANAGER: Original request question: {response.original_request.question[:50]}..." if hasattr(response.original_request, 'question') else "N/A")
 
         print("Processing human approval response...")
         human_input = (response.data or "").strip().lower()

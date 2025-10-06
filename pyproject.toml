@@ -4,10 +4,10 @@ description = "Zava Clothing Company concept pitch deck analysis workflow"
 version = "1.0.0"
 requires-python = ">=3.10"
 dependencies = [
-    # Agent Framework - use local installation
-    "agent-framework[viz]",
-    "agent-framework-azure",
-    "agent-framework-foundry",
+    # Agent Framework - from PyPI
+    "agent-framework",
+    "agent-framework-core[viz]",
+    "agent-framework-azure-ai",
     # PowerPoint processing
     "python-pptx>=0.6.23",
     # Environment and configuration
@@ -25,14 +25,6 @@ dependencies = [
 
 [tool.uv]
 package = false
-
-# Local package sources for agent-framework
-[tool.uv.sources]
-"agent-framework" = { path = "./packages/main", editable = true }
-"agent-framework-azure" = { path = "./packages/azure", editable = true }
-"agent-framework-foundry" = { path = "./packages/foundry", editable = true }
-"agent-framework-workflow" = { path = "./packages/workflow", editable = true }
-"agent-framework-mem0" = { path = "./packages/mem0", editable = true }
 
 # Code formatting and linting configuration
 [tool.ruff]
