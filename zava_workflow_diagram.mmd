@@ -1,0 +1,82 @@
+flowchart TD
+    %% Start Node
+    START([Start: Clothing Concept File]) --> PARSE
+
+    %% Main Workflow Steps
+    PARSE[clothing_concept_parser<br/>📄 Parse PowerPoint Pitch<br/>Extract concept data & images]
+    ADAPT[concept_input_adapter<br/>🔧 Adapt Concept Data<br/>Prepare for analysis]
+    CONCURRENT[concurrent_fashion_analysis<br/>⚡ Concurrent Analysis Workflow<br/>Run 3 agents in parallel]
+    LOG[concurrent_fashion_analysis_logger<br/>📝 Log Analysis Results<br/>Consolidate agent outputs]
+    REPORT[concept_report_writer_agent<br/>📊 Generate Executive Report<br/>Create comprehensive analysis]
+    CONVERT[convert_report_to_approval_request<br/>🔄 Convert to Approval Request<br/>Structure for human review]
+    APPROVAL_MGR[approval_manager<br/>🎯 Approval Manager<br/>Route based on decision]
+    HUMAN[zava_human_approver<br/>👤 Human Review<br/>Zava team decision]
+
+    %% Decision Branches
+    SAVE_APPROVED[save_approved_concept_report<br/>💾 Save Approved Concept<br/>Store successful analysis]
+    DRAFT_REJECTION[draft_concept_rejection_email<br/>✉️ Draft Rejection Email<br/>Prepare rejection notice]
+
+    %% Final Handlers
+    HANDLE_APPROVED[handle_approved_concept<br/>✅ Handle Approved<br/>Final approved processing]
+    HANDLE_REJECTED[handle_rejected_concept<br/>❌ Handle Rejected<br/>Final rejected processing]
+
+    %% Concurrent Analysis Subworkflow Detail
+    subgraph CONCURRENT_SUB[" "]
+        direction TB
+        MARKET[fashion_market_research_agent<br/>📈 Market Research<br/>Trends & competition]
+        DESIGN[fashion_design_evaluation_agent<br/>🎨 Design Evaluation<br/>Aesthetics & innovation]
+        PRODUCTION[production_feasibility_agent<br/>🏭 Production Analysis<br/>Cost & manufacturing]
+        
+        MARKET -.->|Parallel execution| AGGREGATOR[Aggregate Results]
+        DESIGN -.->|Parallel execution| AGGREGATOR
+        PRODUCTION -.->|Parallel execution| AGGREGATOR
+    end
+
+    %% Main Flow Connections
+    PARSE --> ADAPT
+    ADAPT --> CONCURRENT
+    CONCURRENT --> LOG
+    LOG --> REPORT
+    REPORT --> CONVERT
+    CONVERT --> APPROVAL_MGR
+    APPROVAL_MGR --> HUMAN
+    HUMAN --> APPROVAL_MGR
+
+    %% Decision Flow
+    APPROVAL_MGR -->|Approved| SAVE_APPROVED
+    APPROVAL_MGR -->|Rejected| DRAFT_REJECTION
+    SAVE_APPROVED --> HANDLE_APPROVED
+    DRAFT_REJECTION --> HANDLE_REJECTED
+
+    %% End Points
+    HANDLE_APPROVED --> END_APPROVED([✅ End: Concept Approved])
+    HANDLE_REJECTED --> END_REJECTED([❌ End: Concept Rejected])
+
+    %% Styling
+    classDef startEnd fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#000
+    classDef parser fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    classDef analysis fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px,color:#000
+    classDef concurrent fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef human fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#000
+    classDef decision fill:#f1f8e9,stroke:#33691e,stroke-width:2px,color:#000
+    classDef final fill:#ffebee,stroke:#b71c1c,stroke-width:2px,color:#000
+
+    class START,END_APPROVED,END_REJECTED startEnd
+    class PARSE,ADAPT,CONVERT parser
+    class LOG,REPORT analysis
+    class CONCURRENT,MARKET,DESIGN,PRODUCTION,AGGREGATOR concurrent
+    class HUMAN,APPROVAL_MGR human
+    class SAVE_APPROVED,DRAFT_REJECTION decision
+    class HANDLE_APPROVED,HANDLE_REJECTED final
+
+    %% Progress Indicators
+    PARSE -.->|15%| PROGRESS1[Progress: Parse Complete]
+    ADAPT -.->|25%| PROGRESS2[Progress: Analysis Prep]
+    CONCURRENT -.->|50%| PROGRESS3[Progress: Analysis Complete]
+    LOG -.->|60%| PROGRESS4[Progress: Report Generation]
+    REPORT -.->|80%| PROGRESS5[Progress: Executive Report]
+    CONVERT -.->|85%| PROGRESS6[Progress: Approval Prep]
+    HUMAN -.->|90%| PROGRESS7[Progress: Human Review]
+    
+    class PROGRESS1,PROGRESS2,PROGRESS3,PROGRESS4,PROGRESS5,PROGRESS6,PROGRESS7 progress
+    classDef progress fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5,color:#6c757d
