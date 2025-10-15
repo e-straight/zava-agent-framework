@@ -449,12 +449,19 @@ function AnalysisProgressSection({ analysisStatus }) {
     const workflowSteps = [
         'Parse Clothing Concept',
         'Prepare Fashion Analysis',
-        'Market Analysis',
-        'Design Evaluation',
-        'Production Assessment',
+        'Concurrent Fashion Analysis',
         'Generate Analysis Report',
         'Human Review'
     ];
+
+    // Map technical step names to user-friendly display names
+    const stepDisplayNames = {
+        'Parse Clothing Concept': 'Parse Clothing Concept',
+        'Prepare Fashion Analysis': 'Prepare Fashion Analysis',
+        'Concurrent Fashion Analysis': 'Agent Analysis',
+        'Generate Analysis Report': 'Generate Analysis Report',
+        'Human Review': 'Human Review'
+    };
 
     // Determine completed steps from the latest progress update
     const latestStep = analysisStatus.steps[analysisStatus.steps.length - 1];
@@ -484,9 +491,10 @@ function AnalysisProgressSection({ analysisStatus }) {
             <div className="workflow-steps">
                 {workflowSteps.map((stepName) => {
                     const stepStatus = getStepStatus(stepName, completedSteps, analysisStatus.current_step);
+                    const displayName = stepDisplayNames[stepName] || stepName;
                     return (
                         <div key={stepName} className={`step ${stepStatus}`}>
-                            <div className="step-name">{stepName}</div>
+                            <div className="step-name">{displayName}</div>
                         </div>
                     );
                 })}
