@@ -132,6 +132,8 @@ current_analysis_status = ConceptAnalysisStatus(
     outputs=[],
     approval_request=None
 )
+# Track original filenames for temp files
+original_filenames: Dict[str, str] = {}
 
 # Mount static files for the UI
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -187,6 +189,9 @@ async def upload_clothing_concept(file: UploadFile = File(...)):
             content = await file.read()
             tmp_file.write(content)
             temp_file_path = tmp_file.name
+
+        # Store the original filename for later use
+        original_filenames[temp_file_path] = file.filename
 
         # Update analysis status
         current_analysis_status.status = "concept_uploaded"
@@ -531,11 +536,14 @@ async def execute_concept_analysis_async(concept_file_path: str):
     Args:
         concept_file_path: Path to the concept file to analyze
     """
-    global current_analysis_status, workflow_manager
+    global current_analysis_status, workflow_manager, original_filenames
 
     try:
+        # Get the original filename for this temp file
+        original_filename = original_filenames.get(concept_file_path, "Unknown_Concept.pptx")
+
         # Run the complete concept analysis workflow
-        result = await workflow_manager.analyze_clothing_concept(concept_file_path)
+        result = await workflow_manager.analyze_clothing_concept(concept_file_path, original_filename)
 
         # Update final status
         current_analysis_status.status = "completed"

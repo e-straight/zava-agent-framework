@@ -231,7 +231,8 @@ needs and market focus rather than the quality or creativity of your work.
 ### Constructive Feedback for Future Submissions
 {constructive_feedback if constructive_feedback else "We encourage you to continue developing your design skills and stay informed about current fashion trends and market demands."}
 
-{f"### Alternative Directions to Consider\\n{alternative_suggestions}" if alternative_suggestions else ""}
+{"### Alternative Directions to Consider" if alternative_suggestions else ""}
+{alternative_suggestions if alternative_suggestions else ""}
 
 ---
 
