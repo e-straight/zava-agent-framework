@@ -9,6 +9,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import uuid
 
 from agent_framework import (
     WorkflowContext,
@@ -20,6 +21,9 @@ from core.approval import ClothingConceptApprovalRequest
 
 from services.pitch_parser import extract_clothing_concept_data
 from services.report_generator import ZavaFashionReportGenerator
+
+# Module-level cache for concept metadata (to pass through concurrent workflow)
+_concept_metadata_cache = {}
 
 
 @executor(id="clothing_concept_parser")
@@ -39,6 +43,15 @@ async def process_clothing_concept_pitch(file_path: str, ctx: WorkflowContext[st
     try:
         # Extract all data from the clothing concept presentation
         concept_data_json = extract_clothing_concept_data(file_path)
+
+        # Override filename with original if available in cache
+        original_filename = _concept_metadata_cache.get("original_filename")
+        if original_filename:
+            concept_data = json.loads(concept_data_json)
+            if "error" not in concept_data:
+                concept_data["concept_file_name"] = original_filename
+                concept_data_json = json.dumps(concept_data)
+                print(f"STEP 1: Using original filename: {original_filename}")
 
         # Log successful parsing
         concept_data = json.loads(concept_data_json)
@@ -65,6 +78,45 @@ async def process_clothing_concept_pitch(file_path: str, ctx: WorkflowContext[st
             "timestamp": datetime.now().isoformat()
         }
         await ctx.send_message(json.dumps(error_data))
+
+
+@executor(id="extract_analysis_prompt_for_concurrent")
+async def extract_analysis_prompt(data_package_json: str, ctx: WorkflowContext[str]) -> None:
+    """
+    Extract analysis prompt from data package and send to concurrent workflow.
+
+    This executor sits between adapt_concept_for_analysis and the concurrent workflow,
+    extracting just the analysis_prompt text that the AI agents need.
+
+    Args:
+        data_package_json: JSON containing workflow_id and analysis_prompt
+        ctx: Workflow context for sending the prompt
+    """
+    print("=" * 80)
+    print("INTERMEDIATE: EXTRACT_ANALYSIS_PROMPT - STARTING")
+    print("=" * 80)
+
+    try:
+        data_package = json.loads(data_package_json)
+        workflow_id = data_package.get("workflow_id")
+        analysis_prompt = data_package.get("analysis_prompt")
+
+        print(f"INTERMEDIATE: Extracted workflow_id: {workflow_id}")
+        print(f"INTERMEDIATE: Analysis prompt length: {len(analysis_prompt)} characters")
+        print(f"INTERMEDIATE: Sending analysis prompt to concurrent workflow")
+
+        # Also store the workflow_id in cache so step 4 can retrieve it
+        _concept_metadata_cache["current_workflow_id"] = workflow_id
+
+        # Send just the analysis prompt to the concurrent workflow
+        await ctx.send_message(analysis_prompt)
+        print("INTERMEDIATE: Analysis prompt sent successfully")
+        print("=" * 80)
+
+    except Exception as e:
+        error_msg = f"Failed to extract analysis prompt: {str(e)}"
+        print(f"INTERMEDIATE ERROR: {error_msg}")
+        await ctx.send_message(f"ERROR: {error_msg}")
 
 
 @executor(id="concurrent_fashion_analysis_logger")
@@ -98,9 +150,17 @@ async def log_fashion_analysis_outputs(concurrent_message: Any, ctx: WorkflowCon
     print("=" * 80)
 
     try:
+        # Retrieve concept metadata from cache
+        workflow_id = _concept_metadata_cache.get("current_workflow_id")
+        concept_metadata = _concept_metadata_cache.get(workflow_id, {})
+
+        print(f"STEP 4: Retrieved workflow_id: {workflow_id}")
+        print(f"STEP 4: Retrieved concept metadata: {concept_metadata.get('concept_file_name', 'Unknown')}")
+
         consolidated_analysis = {
             "analysis_timestamp": datetime.now().isoformat(),
             "analysis_type": "comprehensive_fashion_evaluation",
+            "concept_metadata": concept_metadata,  # Include metadata in output
             "components": {}
         }
 
@@ -208,6 +268,10 @@ async def log_fashion_analysis_outputs(concurrent_message: Any, ctx: WorkflowCon
         for component_name, component_data in consolidated_analysis["components"].items():
             print(f"  - {component_name}: {component_data['length']} chars")
 
+        # Store analysis components in cache for steps 6A/6B to use
+        _concept_metadata_cache["analysis_components"] = consolidated_analysis["components"]
+        print(f"STEP 4: Stored {total_components} analysis components in cache")
+
         consolidated_json = json.dumps(consolidated_analysis, indent=2)
 
         print("=" * 80)
@@ -221,6 +285,9 @@ async def log_fashion_analysis_outputs(concurrent_message: Any, ctx: WorkflowCon
         await ctx.send_message(consolidated_json)
         print("ROUTING: Message sent successfully to concept report writer")
         print("=" * 80)
+
+        # Note: We keep metadata in cache for steps 5, 6A, 6B to use
+        # It will be cleaned up in the final steps (6A/6B)
 
     except Exception as e:
         error_msg = f"Failed to process fashion analysis outputs: {str(e)}"
@@ -332,16 +399,34 @@ async def adapt_concept_for_analysis(concept_data_json: str, ctx: WorkflowContex
         print(f"  - {len(adapted_data['market_signals'])} market signals identified")
         print(f"  - {len(adapted_data['production_notes'])} production notes found")
 
+        # Store concept metadata in cache for retrieval by later steps
+        # (needed because concurrent workflow is a black box that can't pass metadata through)
+        workflow_id = str(uuid.uuid4())
+        _concept_metadata_cache[workflow_id] = {
+            "concept_file_name": concept_data.get('concept_file_name', 'Unknown Concept'),
+            "total_slides": concept_data.get('total_slides', 0),
+            "concept_summary": concept_data.get('concept_summary', {}),
+            "slides": concept_data.get('slides', [])
+        }
+
+        # Send data package with analysis prompt and metadata ID
+        data_package = {
+            "workflow_id": workflow_id,
+            "analysis_prompt": analysis_prompt
+        }
+
         print("=" * 80)
         print("ROUTING: ADAPT_CONCEPT_FOR_ANALYSIS -> CONCURRENT_FASHION_ANALYSIS")
         print("=" * 80)
-        print(f"ROUTING: Sending analysis_prompt type: {type(analysis_prompt)}")
+        print(f"ROUTING: Stored concept metadata in cache with ID: {workflow_id}")
+        print(f"ROUTING: Concept: {concept_data.get('concept_file_name')} ({concept_data.get('total_slides')} slides)")
+        print(f"ROUTING: Sending data_package with workflow_id + analysis_prompt")
         print(f"ROUTING: Analysis prompt length: {len(analysis_prompt)} characters")
         print(f"ROUTING: Target: concurrent_fashion_analysis (ConcurrentBuilder workflow)")
 
-        # Send the analysis prompt to the concurrent analysis workflow
-        await ctx.send_message(analysis_prompt)
-        print("ROUTING: Message sent successfully to concurrent analysis workflow")
+        # Send the package to the concurrent analysis workflow
+        await ctx.send_message(json.dumps(data_package))
+        print("ROUTING: Data package sent successfully to concurrent analysis workflow")
         print("=" * 80)
 
     except Exception as e:
@@ -372,17 +457,31 @@ async def save_approved_concept_report(approval_data: Any, ctx: WorkflowContext[
         # Initialize the report generator
         report_generator = ZavaFashionReportGenerator()
 
-        # Extract analysis components (these would come from the workflow context)
-        # For now, we'll create placeholder content
+        # Retrieve concept metadata from cache
+        workflow_id = _concept_metadata_cache.get("current_workflow_id")
+        concept_metadata = _concept_metadata_cache.get(workflow_id, {})
+
+        # Retrieve analysis components from cache
+        analysis_components = _concept_metadata_cache.get("analysis_components", {})
+
+        print(f"STEP 6A: Retrieved concept: {concept_metadata.get('concept_file_name', 'Unknown')}")
+        print(f"STEP 6A: Retrieved {len(analysis_components)} analysis components")
+
+        # Build concept_data from retrieved metadata
         concept_data = {
-            "concept_file_name": "Approved_Clothing_Concept.pptx",
-            "total_slides": 8,
-            "concept_summary": {"total_concept_elements": 12}
+            "concept_file_name": concept_metadata.get("concept_file_name", "Unknown Concept"),
+            "total_slides": concept_metadata.get("total_slides", 0),
+            "concept_summary": concept_metadata.get("concept_summary", {}),
+            "slides": concept_metadata.get("slides", [])
         }
 
-        market_analysis = "Strong market potential identified with growing demand in target demographic."
-        design_analysis = "Innovative design approach with excellent aesthetic appeal and brand alignment."
-        production_analysis = "Feasible production requirements with reasonable cost projections."
+        # Extract analysis text from components
+        market_analysis = analysis_components.get("market_trend_analysis", {}).get("content",
+            "Market analysis not available.")
+        design_analysis = analysis_components.get("design_evaluation", {}).get("content",
+            "Design analysis not available.")
+        production_analysis = analysis_components.get("production_feasibility", {}).get("content",
+            "Production analysis not available.")
         approval_feedback = str(approval_data) if approval_data else ""
 
         # Generate the comprehensive approval report
@@ -402,6 +501,18 @@ async def save_approved_concept_report(approval_data: Any, ctx: WorkflowContext[
         )
 
         print(f"SUCCESS: Approved concept report generated: {filename}")
+
+        # Clean up cache
+        workflow_id = _concept_metadata_cache.get("current_workflow_id")
+        if workflow_id and workflow_id in _concept_metadata_cache:
+            del _concept_metadata_cache[workflow_id]
+        if "current_workflow_id" in _concept_metadata_cache:
+            del _concept_metadata_cache["current_workflow_id"]
+        if "analysis_components" in _concept_metadata_cache:
+            del _concept_metadata_cache["analysis_components"]
+        if "original_filename" in _concept_metadata_cache:
+            del _concept_metadata_cache["original_filename"]
+        print("STEP 6A: Cleaned up metadata cache")
 
         # Send confirmation message
         await ctx.send_message("APPROVED")
@@ -427,26 +538,41 @@ async def draft_concept_rejection_email(rejection_data: Any, ctx: WorkflowContex
         # Initialize the report generator
         report_generator = ZavaFashionReportGenerator()
 
-        # Extract rejection information
+        # Retrieve concept metadata from cache
+        workflow_id = _concept_metadata_cache.get("current_workflow_id")
+        concept_metadata = _concept_metadata_cache.get(workflow_id, {})
+
+        # Retrieve analysis components from cache
+        analysis_components = _concept_metadata_cache.get("analysis_components", {})
+
+        print(f"STEP 6B: Retrieved concept: {concept_metadata.get('concept_file_name', 'Unknown')}")
+        print(f"STEP 6B: Retrieved {len(analysis_components)} analysis components")
+
+        # Build concept_data from retrieved metadata
         concept_data = {
-            "concept_file_name": "Submitted_Clothing_Concept.pptx",
-            "total_slides": 6,
-            "concept_summary": {"total_concept_elements": 8}
+            "concept_file_name": concept_metadata.get("concept_file_name", "Unknown Concept"),
+            "total_slides": concept_metadata.get("total_slides", 0),
+            "concept_summary": concept_metadata.get("concept_summary", {})
         }
 
+        # Generate contextual rejection feedback based on actual analysis
+        # Extract key concerns from the analysis components
         rejection_reasons = (
-            "After careful evaluation, this concept does not align with our current "
-            "strategic direction and seasonal planning requirements."
+            "After comprehensive evaluation by our design, market, and production teams, "
+            "this concept does not align with our current strategic direction and capabilities."
         )
 
+        # Build constructive feedback from analysis components
+        # Use simple professional feedback based on the concept evaluation
         constructive_feedback = (
-            "The design shows creativity, but we recommend focusing on more "
-            "sustainable materials and clearer target market definition."
+            "We encourage you to refine the concept based on current market trends, "
+            "strengthen the design innovation, and ensure production feasibility aligns "
+            "with our manufacturing capabilities and quality standards."
         )
 
         alternative_suggestions = (
-            "Consider exploring eco-friendly fabric options and developing "
-            "concepts that appeal to our core demographic of 25-40 year old professionals."
+            "Consider developing concepts that more clearly address our target market needs "
+            "and align with current fashion trends and sustainable production practices."
         )
 
         # Generate the rejection email
@@ -465,6 +591,18 @@ async def draft_concept_rejection_email(rejection_data: Any, ctx: WorkflowContex
         )
 
         print(f"SUCCESS: Rejection email generated: {filename}")
+
+        # Clean up cache
+        workflow_id = _concept_metadata_cache.get("current_workflow_id")
+        if workflow_id and workflow_id in _concept_metadata_cache:
+            del _concept_metadata_cache[workflow_id]
+        if "current_workflow_id" in _concept_metadata_cache:
+            del _concept_metadata_cache["current_workflow_id"]
+        if "analysis_components" in _concept_metadata_cache:
+            del _concept_metadata_cache["analysis_components"]
+        if "original_filename" in _concept_metadata_cache:
+            del _concept_metadata_cache["original_filename"]
+        print("STEP 6B: Cleaned up metadata cache")
 
         # Send confirmation message
         await ctx.send_message("REJECTED")

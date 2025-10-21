@@ -32,6 +32,7 @@ from core.executors import (
     process_clothing_concept_pitch,
     log_fashion_analysis_outputs,
     adapt_concept_for_analysis,
+    extract_analysis_prompt,
     convert_report_to_approval_request,
     save_approved_concept_report,
     draft_concept_rejection_email,
@@ -202,7 +203,8 @@ class ZavaConceptWorkflowManager:
             self.workflow = WorkflowBuilder()\
                 .set_start_executor(process_clothing_concept_pitch)\
                 .add_edge(process_clothing_concept_pitch, adapt_concept_for_analysis)\
-                .add_edge(adapt_concept_for_analysis, concurrent_analysis_subworkflow)\
+                .add_edge(adapt_concept_for_analysis, extract_analysis_prompt)\
+                .add_edge(extract_analysis_prompt, concurrent_analysis_subworkflow)\
                 .add_edge(concurrent_analysis_subworkflow, log_fashion_analysis_outputs)\
                 .add_edge(log_fashion_analysis_outputs, concept_report_writer)\
                 .add_edge(concept_report_writer, convert_report_to_approval_request)\
@@ -230,17 +232,22 @@ class ZavaConceptWorkflowManager:
             await self._handle_error(error_detail)
             return False
 
-    async def analyze_clothing_concept(self, concept_file_path: str) -> str:
+    async def analyze_clothing_concept(self, concept_file_path: str, original_filename: str = None) -> str:
         """
         Run the complete analysis workflow for a clothing concept submission.
 
         Args:
             concept_file_path: Path to the PowerPoint file containing the concept pitch
+            original_filename: Original filename of the uploaded file (before temp file creation)
 
         Returns:
             Final workflow result ("APPROVED" or "REJECTED")
         """
         try:
+            # Store original filename in executors cache if provided
+            if original_filename:
+                from core import executors
+                executors._concept_metadata_cache["original_filename"] = original_filename
             # Always rebuild workflow to ensure fresh agents with updated instructions
             success = await self.build_concept_evaluation_workflow()
             if not success:
