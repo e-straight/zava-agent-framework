@@ -55,7 +55,7 @@ def create_fashion_research_agent(chat_clients_list: List[Any]) -> AgentExecutor
     if not chat_clients_list or len(chat_clients_list) == 0:
         raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    chat_client = chat_clients_list[0]
+    chat_client = chat_clients_list[1]
     research_agent = chat_client.create_agent(
         instructions=system_prompt,
         name="Fashion Market Research Agent",
@@ -99,7 +99,7 @@ def create_design_evaluation_agent(chat_clients_list: List[Any]) -> AgentExecuto
     if not chat_clients_list or len(chat_clients_list) == 0:
         raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    chat_client = chat_clients_list[1] if len(chat_clients_list) > 1 else chat_clients_list[0]
+    chat_client = chat_clients_list[2] if len(chat_clients_list) > 1 else chat_clients_list[0]
     design_agent = chat_client.create_agent(
         instructions=system_prompt,
         name="Fashion Design Evaluation Agent",
@@ -142,7 +142,7 @@ def create_production_feasibility_agent(chat_clients_list: List[Any]) -> AgentEx
     if not chat_clients_list or len(chat_clients_list) == 0:
         raise ValueError("No chat clients available for agent creation. Please configure Foundry endpoint.")
 
-    chat_client = chat_clients_list[2] if len(chat_clients_list) > 2 else chat_clients_list[0]
+    chat_client = chat_clients_list[3] if len(chat_clients_list) > 2 else chat_clients_list[0]
     production_agent = chat_client.create_agent(
         instructions=system_prompt,
         name="Production Feasibility Agent",
